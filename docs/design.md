@@ -1,49 +1,48 @@
 # WAL-CPP Design
 
-This document describes the **architecture, responsibilities, and invariants**
-of the WAL-CPP system.
+This document defines the **architecture, responsibilities, and invariants**
+of WAL-CPP.
 
-The goal of this design is to provide a **reusable, minimal, and correct**
-write-ahead log suitable for high-performance and correctness-critical systems.
-
----
-
-## 1. Overview
-
-WAL-CPP is a **single-writer, append-only write-ahead log**.
-
-Its responsibilities are strictly limited to:
-
-- ordering
-- durability
-- crash-safe recovery
-- deterministic replay
-
-All business meaning, serialization, and state reconstruction are
-**explicitly delegated to the user**.
+WAL-CPP is designed as a **reusable, minimal, and correctness-first**
+write-ahead log. Its purpose is to provide durable ordering and deterministic
+recovery without assuming any application-level semantics.
 
 ---
 
-## 2. Architecture
+## 1. Design Goals
+
+WAL-CPP is designed to:
+
+- provide a single, totally ordered log
+- guarantee durability and crash safety
+- enable deterministic replay
+- remain reusable across domains
+- avoid coupling to business logic
+
+---
+
+## 2. Architectural Boundary
 
 ![Architecture](High-level-wal-architecture.png)
 
-### Flow Description
+WAL-CPP is designed and documented **in isolation**.
 
-1. The user or engine produces domain events
-2. Events are serialized into binary payloads
-3. A sequencer assigns a strictly increasing sequence number
-4. Records are submitted to the WAL via a queue
-5. A single WAL thread persists data and metadata
-6. On restart, WAL replays records for user-controlled recovery
+Any component that produces or consumes WAL records is considered external.
+Such components are shown only to clarify the **contractual boundary** of the WAL.
 
-The WAL does not know what the data represents — only **that it exists and in what order**.
+WAL-CPP:
+
+- accepts ordered binary records
+- persists them durably
+- replays them deterministically
+
+WAL-CPP does not interpret, validate, or act upon the contents of records.
 
 ---
 
 ## 3. Single-Writer Model
 
-The WAL operates with **exactly one writer thread**.
+WAL-CPP operates with **exactly one writer thread**.
 
 This thread exclusively owns:
 
@@ -52,28 +51,28 @@ This thread exclusively owns:
 - fsync operations
 - metadata updates
 
-This design:
+This model:
 
-- avoids locks
-- guarantees deterministic ordering
-- simplifies recovery logic
+- avoids locking and contention
+- guarantees strict ordering
+- simplifies recovery semantics
 
-All concurrency happens **before** WAL submission.
+All concurrency occurs **outside** the WAL boundary.
 
 ---
 
-## 4. WAL Internal Pipeline
+## 4. Internal Pipeline
 
 ![Internal Pipeline](WAL-Internals.png)
 
-The WAL thread performs the following steps in strict order:
+The WAL writer thread executes the following steps in strict order:
 
-1. Drain ingress queue
+1. Drain the ingress queue
 2. Build a batch of records
-3. Append batch to active segment file
-4. fsync segment file
-5. Update metadata with commit information
-6. fsync metadata file
+3. Append the batch to the active segment file
+4. fsync the segment file
+5. Update WAL metadata
+6. fsync the metadata file
 
 Only after step 6 is a batch considered **durably committed**.
 
@@ -83,7 +82,7 @@ Only after step 6 is a batch considered **durably committed**.
 
 ![Record Layout](WAL-Record-Layout.png)
 
-Each WAL record consists of:
+Each WAL record consists of two parts:
 
 ### WAL Header (WAL-owned)
 
@@ -94,10 +93,10 @@ Each WAL record consists of:
 - Payload size
 - Checksum
 
-### User Payload (User-owned)
+### Payload (Externally-owned)
 
 - Arbitrary binary data
-- Any structure or encoding
+- Any encoding or structure
 - Never inspected by WAL
 
 The sequence number is part of the **WAL header**, not the payload.
@@ -106,15 +105,19 @@ The sequence number is part of the **WAL header**, not the payload.
 
 ## 6. Sequence Numbers
 
-Sequence numbers are:
+Sequence numbers provide:
 
-- strictly monotonic
-- globally ordered
-- required for recovery and replay
+- total ordering
+- replay boundaries
+- recovery guarantees
 
-WAL **validates** sequence ordering but does not assign meaning to it.
+WAL-CPP:
 
-A separate sequencer component is responsible for generating sequence numbers.
+- validates sequence monotonicity
+- persists sequence numbers
+- uses them for recovery and truncation
+
+Sequence generation itself is **outside WAL scope**.
 
 ---
 
@@ -122,47 +125,51 @@ A separate sequencer component is responsible for generating sequence numbers.
 
 ![Recovery Flow](Recovery&Truncation-Flow.png)
 
-On startup, WAL performs:
+On startup, WAL-CPP performs:
 
-1. Read `wal.meta`
+1. Read WAL metadata
 2. Determine last committed sequence
 3. Scan WAL segments sequentially
 4. Validate headers and checksums
-5. Stop on corruption or end-of-log
+5. Stop at corruption or end-of-log
 
-Recovered records are then provided to the user for replay.
+Recovered records are then made available for deterministic replay.
 
-WAL recovery is **self-contained** and does not require user logic.
+Recovery is fully self-contained and does not depend on external logic.
 
 ---
 
 ## 8. Replay Model
 
-Replay is **user-driven**.
+Replay is explicitly **consumer-controlled**.
 
-The user controls:
+External consumers decide:
 
 - replay start sequence
 - record filtering
-- payload deserialization
+- payload decoding
 - state reconstruction
 
-WAL only guarantees ordered delivery of valid records.
+WAL-CPP guarantees only:
+
+- ordering
+- integrity
+- completeness up to the committed boundary
 
 ---
 
 ## 9. Truncation and Retention
 
-WAL does not decide when data is no longer relevant.
+WAL-CPP does not decide when data becomes irrelevant.
 
-Truncation requires an explicit user-provided **safe sequence**, typically
-after a snapshot is completed.
+Truncation requires an explicit **safe sequence boundary**, typically provided
+after external state has been safely materialized.
 
 Rules:
 
 - Only sealed segments may be deleted
 - Partial segment deletion is forbidden
-- WAL never guesses truncation safety
+- WAL never infers truncation safety
 
 ---
 
@@ -174,7 +181,7 @@ The following invariants must always hold:
 - Append-only log structure
 - Total ordering by sequence number
 - Payloads are opaque to WAL
-- Metadata is the source of commit truth
+- Metadata defines commit truth
 - No truncation without explicit safety proof
 - Deterministic recovery and replay
 
@@ -182,23 +189,23 @@ The following invariants must always hold:
 
 ## 11. Non-Goals
 
-WAL-CPP explicitly does NOT:
+WAL-CPP explicitly does not:
 
 - manage schemas
-- deserialize payloads
+- serialize or deserialize data
+- enforce business rules
+- coordinate workflows
 - provide messaging semantics
-- perform business validation
-- make retention decisions
 
 ---
 
-## 12. Future Extensions (Out of Scope)
+## 12. Future Extensions
 
-Potential future extensions include:
+Potential extensions include:
 
 - multiple WAL instances per shard
 - configurable fsync policies
-- async durability modes
+- alternative durability modes
 - tooling and inspection utilities
 
-These extensions must not violate existing invariants.
+All extensions must preserve existing invariants.

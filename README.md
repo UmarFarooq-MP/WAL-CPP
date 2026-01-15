@@ -3,17 +3,27 @@
 WAL-CPP is a **single-writer, append-only Write-Ahead Log (WAL)** designed for  
 **deterministic recovery, crash safety, and ordered replay**.
 
-It is intended to serve as a **foundational infrastructure primitive** for systems
-that require strict ordering and durable state transitions, including:
+This repository provides a **pure WAL implementation**.  
+It is intentionally limited to **durability, ordering, and recovery**.
 
-- order matching engines
-- trading and financial systems
-- event-sourced architectures
-- low-latency, stateful services
+WAL-CPP does not contain, depend on, or assume any business logic.
 
-WAL-CPP is intentionally scoped to **durability and ordering only**.  
-All business logic, data interpretation, and state reconstruction are handled by
-the user of the library.
+---
+
+## Scope
+
+This repository is strictly limited to the implementation of a write-ahead log.
+
+WAL-CPP does **not**:
+
+- generate sequence numbers
+- serialize or deserialize data
+- interpret payloads
+- manage application state
+- implement business workflows
+
+Any component that produces or consumes WAL records is considered **external**
+to this repository.
 
 ---
 
@@ -32,7 +42,7 @@ the user of the library.
 ## What WAL-CPP Is
 
 - A durability and ordering layer
-- A source of truth for ordered events
+- A source of truth for ordered records
 - A deterministic replay mechanism
 
 ## What WAL-CPP Is Not
@@ -44,19 +54,26 @@ the user of the library.
 
 ---
 
-## High-Level Architecture
+## WAL Architecture
 
 <p align="center">
   <img src="docs/High-level-wal-architecture.png" width="600">
 </p>
 
+This diagram represents the WAL **in isolation**.
+
+External inputs and outputs are shown only to define the **interface boundary**
+of the WAL. WAL-CPP accepts ordered binary records, persists them durably, and
+replays them deterministically. It does not interpret payloads or depend on
+external system semantics.
+
 At a high level:
 
-1. The user or engine serializes domain data into binary form
-2. A sequencer assigns a strictly monotonic sequence number
-3. Records are submitted via a queue
-4. A single WAL thread persists records and metadata
-5. Replay is performed by user logic using WAL-provided iteration
+1. Ordered binary records are submitted to the WAL
+2. Each record carries a strictly monotonic sequence number
+3. Records are enqueued for persistence
+4. A single WAL writer thread persists records and metadata
+5. WAL provides deterministic replay of persisted records
 
 ---
 
@@ -66,7 +83,7 @@ At a high level:
   <img src="docs/WAL-Internals.png" width="550">
 </p>
 
-The WAL thread performs the following steps:
+The WAL writer thread performs the following steps:
 
 1. Drain the ingress queue
 2. Build record batches
@@ -100,7 +117,7 @@ The WAL **never interprets or deserializes** the payload.
   <img src="docs/Recovery&Truncation-Flow.png" width="550">
 </p>
 
-- WAL is able to recover itself without user-provided logic
+- WAL is able to recover itself without external logic
 - Replay start position and filtering are fully user-controlled
 - WAL never deletes data unless explicitly instructed via a safe sequence
 
@@ -128,5 +145,5 @@ The following invariants are non-negotiable:
 
 ## Status
 
-This repository currently follows a **design-first approach**.  
+This repository follows a **design-first approach**.  
 Public APIs and implementation will be added once the design is fully locked.
