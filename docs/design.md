@@ -3,7 +3,7 @@
 This document defines the **architecture, responsibilities, and invariants**
 of WAL-CPP.
 
-WAL-CPP is designed as a **reusable, minimal, and correctness-first**
+WAL-CPP is designed as a **reusable, minimal, correctness-first**
 write-ahead log. Its purpose is to provide durable ordering and deterministic
 recovery without assuming any application-level semantics.
 
@@ -36,7 +36,7 @@ WAL-CPP:
 - persists them durably
 - replays them deterministically
 
-WAL-CPP does not interpret, validate, or act upon the contents of records.
+WAL-CPP does not interpret, validate, or act upon record contents.
 
 ---
 
@@ -51,13 +51,8 @@ This thread exclusively owns:
 - fsync operations
 - metadata updates
 
-This model:
-
-- avoids locking and contention
-- guarantees strict ordering
-- simplifies recovery semantics
-
-All concurrency occurs **outside** the WAL boundary.
+This model avoids locking, guarantees strict ordering,
+and simplifies recovery semantics.
 
 ---
 
@@ -111,13 +106,8 @@ Sequence numbers provide:
 - replay boundaries
 - recovery guarantees
 
-WAL-CPP:
-
-- validates sequence monotonicity
-- persists sequence numbers
-- uses them for recovery and truncation
-
-Sequence generation itself is **outside WAL scope**.
+WAL-CPP validates and persists sequence numbers but does not generate them.
+Sequence generation is explicitly **outside WAL scope**.
 
 ---
 
@@ -133,15 +123,13 @@ On startup, WAL-CPP performs:
 4. Validate headers and checksums
 5. Stop at corruption or end-of-log
 
-Recovered records are then made available for deterministic replay.
-
-Recovery is fully self-contained and does not depend on external logic.
+Recovered records are made available for deterministic replay.
 
 ---
 
 ## 8. Replay Model
 
-Replay is explicitly **consumer-controlled**.
+Replay is **consumer-controlled**.
 
 External consumers decide:
 
@@ -150,11 +138,7 @@ External consumers decide:
 - payload decoding
 - state reconstruction
 
-WAL-CPP guarantees only:
-
-- ordering
-- integrity
-- completeness up to the committed boundary
+WAL-CPP guarantees ordering, integrity, and completeness only.
 
 ---
 

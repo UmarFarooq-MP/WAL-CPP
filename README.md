@@ -3,8 +3,8 @@
 WAL-CPP is a **single-writer, append-only Write-Ahead Log (WAL)** designed for  
 **deterministic recovery, crash safety, and ordered replay**.
 
-This repository provides a **pure WAL implementation**.  
-It is intentionally limited to **durability, ordering, and recovery**.
+This repository provides a **pure WAL implementation**, intentionally scoped to
+**durability, ordering, and recovery only**.
 
 WAL-CPP does not contain, depend on, or assume any business logic.
 
@@ -22,7 +22,7 @@ WAL-CPP does **not**:
 - manage application state
 - implement business workflows
 
-Any component that produces or consumes WAL records is considered **external**
+Any component producing or consuming WAL records is considered **external**
 to this repository.
 
 ---
@@ -56,16 +56,19 @@ to this repository.
 
 ## WAL Architecture
 
-<p align="center">
-  <img src="docs/High-level-wal-architecture.png" width="600">
-</p>
+<details>
+  <summary><strong>View WAL Architecture Diagram</strong></summary>
+  <br/>
+  <p align="center">
+    <img src="docs/High-level-wal-architecture.png" width="600">
+  </p>
+</details>
 
 This diagram represents the WAL **in isolation**.
 
 External inputs and outputs are shown only to define the **interface boundary**
 of the WAL. WAL-CPP accepts ordered binary records, persists them durably, and
-replays them deterministically. It does not interpret payloads or depend on
-external system semantics.
+replays them deterministically.
 
 At a high level:
 
@@ -79,9 +82,13 @@ At a high level:
 
 ## WAL Internal Pipeline
 
-<p align="center">
-  <img src="docs/WAL-Internals.png" width="550">
-</p>
+<details>
+  <summary><strong>View WAL Internal Pipeline</strong></summary>
+  <br/>
+  <p align="center">
+    <img src="docs/WAL-Internals.png" width="550">
+  </p>
+</details>
 
 The WAL writer thread performs the following steps:
 
@@ -98,9 +105,13 @@ A batch is considered **committed only after metadata has been fsynced**.
 
 ## WAL Record Layout
 
-<p align="center">
-  <img src="docs/WAL-Record-Layout.png" width="450">
-</p>
+<details>
+  <summary><strong>View WAL Record Layout</strong></summary>
+  <br/>
+  <p align="center">
+    <img src="docs/WAL-Record-Layout.png" width="450">
+  </p>
+</details>
 
 Each WAL record consists of:
 
@@ -113,9 +124,13 @@ The WAL **never interprets or deserializes** the payload.
 
 ## Recovery and Truncation
 
-<p align="center">
-  <img src="docs/Recovery&Truncation-Flow.png" width="550">
-</p>
+<details>
+  <summary><strong>View Recovery and Truncation Flow</strong></summary>
+  <br/>
+  <p align="center">
+    <img src="docs/Recovery&Truncation-Flow.png" width="550">
+  </p>
+</details>
 
 - WAL is able to recover itself without external logic
 - Replay start position and filtering are fully user-controlled
